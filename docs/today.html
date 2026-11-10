@@ -406,6 +406,36 @@
         pointer-events: none;
       }
 
+      /* 今天 / 全部 两个视图的切换，轻一点，别抢标题的注意力 */
+      .tabs {
+        display: flex;
+        gap: 3px;
+        margin-top: 7px;
+      }
+
+      .tab {
+        padding: 3px 9px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--ink-faint);
+        font: inherit;
+        font-size: 11.5px;
+        line-height: 1.5;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+        transition: background 0.12s ease, color 0.12s ease;
+      }
+
+      .tab:hover {
+        color: var(--ink-soft);
+      }
+
+      .tab[aria-selected='true'] {
+        background: rgba(25, 24, 22, 0.07);
+        color: var(--ink);
+      }
+
       /* 置顶按钮：浏览器里没有意义，只在壳里出现 */
       .pin {
         display: none;
@@ -442,7 +472,7 @@
   <body>
     <header>
       <div class="top">
-        <h1>今天</h1>
+        <h1 id="heading">今天</h1>
         <span class="count" id="count"></span>
         <button class="pin" id="pin" type="button" aria-pressed="false" title="总在最前">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -452,6 +482,14 @@
         </button>
       </div>
       <div class="date" id="date"></div>
+      <div class="tabs" id="tabs" role="tablist">
+        <button class="tab" id="tab-today" type="button" role="tab" data-mode="today" aria-selected="true">
+          今天
+        </button>
+        <button class="tab" id="tab-all" type="button" role="tab" data-mode="all" aria-selected="false">
+          全部
+        </button>
+      </div>
       <div class="rule"></div>
     </header>
 
@@ -512,6 +550,7 @@
       const API_ROOT = 'https://api.github.com'
       const PULL_EVERY = 60000
       const PULL_THROTTLE = 20000
+      const MODE_KEY = 'workbench.today.mode'
 
       const pinEl = document.getElementById('pin')
       const gearEl = document.getElementById('gear')
@@ -519,6 +558,8 @@
       const listEl = document.getElementById('list')
       const countEl = document.getElementById('count')
       const dateEl = document.getElementById('date')
+      const headingEl = document.getElementById('heading')
+      const tabsEl = document.getElementById('tabs')
       const footEl = document.getElementById('foot-note')
 
       const fRepo = document.getElementById('f-repo')
@@ -545,6 +586,9 @@
 
       /** footer 上「同步中…／已同步」的回落定时器。 */
       let footTimer = null
+
+      /** 'today' 只看今天到期的，'all' 看所有没做完的。记住上次的选择。 */
+      let mode = localStorage.getItem(MODE_KEY) === 'all' ? 'all' : 'today'
 
       function todayStart() {
         const d = new Date()
@@ -833,10 +877,19 @@
 
       /* ---------------- 渲染 ---------------- */
 
+      /** 标题和两个 tab 的选中态跟着 mode 走 */
+      function syncTabs() {
+        headingEl.textContent = mode === 'all' ? '待办' : '今天'
+        for (const tab of tabsEl.querySelectorAll('.tab')) {
+          tab.setAttribute('aria-selected', String(tab.dataset.mode === mode))
+        }
+      }
+
       function render() {
         const now = new Date()
         const end = todayStart() + 86400000
-        const all = notes.filter((n) => !n.deletedAt)
+        const live = notes.filter((n) => !n.deletedAt)
+        const open = live.filter((n) => !n.done)
 
         dateEl.textContent =
           now.getFullYear() +
@@ -847,34 +900,57 @@
           ' 日 · 星期' +
           WEEK[now.getDay()]
 
-        // 今天该做的：今天之前到期的、还没做完的
-        const todo = all
-          .filter((n) => typeof n.dueAt === 'number' && !n.done && n.dueAt < end)
-          .sort((a, b) => a.dueAt - b.dueAt)
+        syncTabs()
 
-        const doneToday = all.filter(
+        let list
+        if (mode === 'all') {
+          // 有到期日的按日子从早到晚排前面，没日期的按最近改动排后面
+          list = open.slice().sort((a, b) => {
+            const ad = typeof a.dueAt === 'number' ? a.dueAt : Infinity
+            const bd = typeof b.dueAt === 'number' ? b.dueAt : Infinity
+            if (ad !== bd) return ad - bd
+            return (b.updatedAt || 0) - (a.updatedAt || 0)
+          })
+        } else {
+          // 今天该做的：今天之前到期的、还没做完的
+          list = open
+            .filter((n) => typeof n.dueAt === 'number' && n.dueAt < end)
+            .sort((a, b) => a.dueAt - b.dueAt)
+        }
+
+        const doneToday = live.filter(
           (n) => n.done && typeof n.dueAt === 'number' && n.dueAt < end,
         ).length
 
-        countEl.textContent = todo.length ? todo.length + ' 件' : ''
+        countEl.textContent = list.length ? list.length + ' 件' : ''
 
         if (!footEl.dataset.manual) {
-          footEl.textContent = doneToday ? '已完成 ' + doneToday + ' 件' : ''
+          // 「已完成 N 件」说的是今天做完的，在「全部」里没意义，就不显示
+          footEl.textContent = mode === 'today' && doneToday ? '已完成 ' + doneToday + ' 件' : ''
         }
 
-        if (todo.length === 0) {
+        if (list.length === 0) {
           const configured = Boolean(readConfig())
-          listEl.innerHTML = all.length
-            ? '<p class="done-all">今天没有要做的事。<br />可以歇一会儿。</p>'
-            : configured
-              ? '<p class="blank">还没有笔记。<br />在工作台里写第一条吧。</p>'
-              : '<p class="blank">还没连上数据。<br />先去网页版配置同步，或者在这里点齿轮填一次。</p>'
+          const empty = configured
+            ? '<p class="blank">还没有笔记。<br />在工作台里写第一条吧。</p>'
+            : '<p class="blank">还没连上数据。<br />先去网页版配置同步，或者在这里点齿轮填一次。</p>'
+
+          if (!live.length) {
+            listEl.innerHTML = empty
+            return
+          }
+
+          listEl.innerHTML =
+            mode === 'all'
+              ? '<p class="done-all">全部做完了。</p>'
+              : '<p class="done-all">今天没有要做的事。<br />可以歇一会儿。</p>'
           return
         }
 
         const frag = document.createDocumentFragment()
-        for (const note of todo) {
-          const overdue = note.dueAt < todayStart()
+        for (const note of list) {
+          const hasDue = typeof note.dueAt === 'number'
+          const overdue = hasDue && note.dueAt < todayStart()
 
           const btn = document.createElement('button')
           btn.type = 'button'
@@ -888,11 +964,16 @@
           title.className = 'title'
           title.textContent = titleOf(note)
 
-          const due = document.createElement('span')
-          due.className = overdue ? 'due over' : 'due'
-          due.textContent = formatDue(note.dueAt)
+          btn.append(circle, title)
 
-          btn.append(circle, title, due)
+          // 「全部」里有一堆没设日期的，这些就不画右侧的胶囊（空胶囊会显示成一条短线）
+          if (hasDue) {
+            const due = document.createElement('span')
+            due.className = overdue ? 'due over' : 'due'
+            due.textContent = formatDue(note.dueAt)
+            btn.append(due)
+          }
+
           frag.appendChild(btn)
         }
         listEl.replaceChildren(frag)
@@ -959,6 +1040,16 @@
       }
 
       /* ---------------- 绑定 ---------------- */
+
+      tabsEl.addEventListener('click', (event) => {
+        const tab = event.target.closest('.tab')
+        if (!tab) return
+        const next = tab.dataset.mode === 'all' ? 'all' : 'today'
+        if (next === mode) return
+        mode = next
+        localStorage.setItem(MODE_KEY, mode)
+        render()
+      })
 
       pinEl.addEventListener('click', async () => {
         const next = pinEl.getAttribute('aria-pressed') !== 'true'
