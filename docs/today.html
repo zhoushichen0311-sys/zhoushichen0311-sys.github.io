@@ -3,10 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>今天 · 工作台</title>
     <style>
       /* 桌面小窗专用：只显示「今天还没做完的事」。
-         和主应用共用同一个源，所以共享 localStorage —— 在那边改这里会跟着变。 */
+         数据来源有两个：localStorage（主应用同源时共享）和 GitHub 私有仓库里的
+         data.json（填了同步配置之后）。填了配置就以远端为准，本地留一份缓存。 */
       :root {
         color-scheme: light;
         --canvas: #f4f3ef;
@@ -167,11 +169,22 @@
         text-align: center;
       }
 
+      .blank button {
+        margin-top: 8px;
+        border: 0;
+        background: none;
+        color: var(--accent);
+        font: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
       footer {
         flex: none;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 8px;
         height: 30px;
         padding: 0 16px;
         border-top: 1px solid var(--line);
@@ -188,6 +201,187 @@
       footer a:hover {
         color: var(--accent);
         text-decoration: underline;
+      }
+
+      #foot-note {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #foot-note.bad {
+        color: var(--danger);
+      }
+
+      .foot-right {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      /* 齿轮：打开同步设置 */
+      .gear {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--ink-faint);
+        cursor: pointer;
+        transition:
+          background 0.12s ease,
+          color 0.12s ease;
+      }
+
+      .gear:hover {
+        background: rgba(25, 24, 22, 0.06);
+        color: var(--ink);
+      }
+
+      /* ---------- 同步设置 ---------- */
+
+      .sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        padding: 13px 16px 14px;
+        background: var(--canvas);
+        overflow-y: auto;
+      }
+
+      .sheet[hidden] {
+        display: none;
+      }
+
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1px;
+      }
+
+      .sheet-head strong {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .sheet-head button {
+        border: 0;
+        background: none;
+        color: var(--ink-faint);
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 0;
+      }
+
+      .sheet-head button:hover {
+        color: var(--ink);
+      }
+
+      .hint {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: var(--ink-faint);
+      }
+
+      .f {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 10px;
+        color: var(--ink-faint);
+      }
+
+      .f input {
+        width: 100%;
+        padding: 4px 7px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        font-size: 11px;
+        user-select: text;
+        -webkit-app-region: no-drag;
+      }
+
+      .f input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(30, 58, 76, 0.12);
+      }
+
+      .row2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+
+      .msg {
+        /* 把提示和按钮一起推到底部，上面填完字段后有一口气的距离 */
+        margin-top: auto;
+        padding-top: 6px;
+        min-height: 19px;
+        font-size: 10px;
+        line-height: 1.5;
+        color: var(--ink-faint);
+      }
+
+      .msg.bad {
+        color: var(--danger);
+      }
+
+      .msg.good {
+        color: var(--accent);
+      }
+
+      .actions {
+        display: flex;
+        gap: 7px;
+        margin-top: 2px;
+      }
+
+      .btn {
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--ink-soft);
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+
+      .btn:hover {
+        border-color: var(--ink-faint);
+      }
+
+      .btn.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .btn.primary:hover {
+        background: #24465c;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
 
       /* ---------- 在 Electron 外壳里的样子 ---------- */
@@ -264,31 +458,94 @@
     <main id="list"></main>
 
     <footer>
-      <span id="done"></span>
-      <a href="/" target="_blank" rel="noreferrer">打开工作台 ↗</a>
+      <span id="foot-note"></span>
+      <div class="foot-right">
+        <button class="gear" id="gear" type="button" title="同步设置">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+        <a href="/" target="_blank" rel="noreferrer">打开工作台 ↗</a>
+      </div>
     </footer>
 
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheet-head">
+        <strong>同步</strong>
+        <button id="sheet-close" type="button">关闭</button>
+      </div>
+      <p class="hint">
+        把数据放进你自己的 GitHub 私有仓库。网页版填同一份，手机和小窗就能看到同一批笔记。
+      </p>
+      <label class="f">
+        <span>仓库</span>
+        <input id="f-repo" placeholder="owner/repo" spellcheck="false" autocomplete="off" />
+      </label>
+      <div class="row2">
+        <label class="f">
+          <span>分支</span>
+          <input id="f-branch" placeholder="main" spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="f">
+          <span>文件</span>
+          <input id="f-path" placeholder="data.json" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <label class="f">
+        <span>token</span>
+        <input id="f-token" type="password" placeholder="github_pat_..." spellcheck="false" autocomplete="off" />
+      </label>
+      <p class="hint">Fine-grained token，只给这个仓库 Contents 读写权限。</p>
+      <div class="msg" id="sheet-msg"></div>
+      <div class="actions">
+        <button class="btn primary" id="sheet-save" type="button">保存并同步</button>
+        <button class="btn" id="sheet-clear" type="button">断开</button>
+      </div>
+    </div>
+
     <script>
-      // 置顶按钮在浏览器里不显示（CSS 只认 data-shell="electron"），
-      // 这个标记由 Electron 主进程打上；事件绑定在这里做，和标记无关。
-      const pinEl = document.getElementById('pin')
-      if (pinEl) {
-        pinEl.addEventListener('click', async () => {
-          const next = pinEl.getAttribute('aria-pressed') !== 'true'
-          pinEl.setAttribute('aria-pressed', String(next))
-          await window.workbench?.setPinned(next)
-        })
-      }
+      /* ---------------- 常量 ---------------- */
 
       const NOTES_KEY = 'workbench.notes.v1'
+      const SYNC_KEY = 'workbench.sync.v1'
+      const API_ROOT = 'https://api.github.com'
+      const PULL_EVERY = 60000
+      const PULL_THROTTLE = 20000
+
+      const pinEl = document.getElementById('pin')
+      const gearEl = document.getElementById('gear')
+      const sheetEl = document.getElementById('sheet')
       const listEl = document.getElementById('list')
       const countEl = document.getElementById('count')
       const dateEl = document.getElementById('date')
-      const doneEl = document.getElementById('done')
+      const footEl = document.getElementById('foot-note')
+
+      const fRepo = document.getElementById('f-repo')
+      const fBranch = document.getElementById('f-branch')
+      const fPath = document.getElementById('f-path')
+      const fToken = document.getElementById('f-token')
+      const sheetMsg = document.getElementById('sheet-msg')
 
       const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 
-      /** 当天的零点，用来判断「今天到期」和「已经逾期」。 */
+      /* ---------------- 数据 ---------------- */
+
+      /** 当前展示的笔记。远端是权威来源，远端取不到时退回本地缓存。 */
+      let notes = []
+
+      /** 上一次成功拉取的时间，用来做节流。 */
+      let lastPull = 0
+
+      /** 正在改写远端时置位，避免同一时刻两个 PUT。 */
+      let writing = false
+
+      /** 同步进行中又勾了一条：先排在这里，等这一轮写完全部补上。 */
+      let pending = new Map()
+
+      /** footer 上「同步中…／已同步」的回落定时器。 */
+      let footTimer = null
+
       function todayStart() {
         const d = new Date()
         d.setHours(0, 0, 0, 0)
@@ -306,16 +563,6 @@
         return d.getMonth() + 1 + '月' + d.getDate() + '日'
       }
 
-      function readNotes() {
-        try {
-          const raw = localStorage.getItem(NOTES_KEY)
-          const list = raw ? JSON.parse(raw) : []
-          return Array.isArray(list) ? list : []
-        } catch {
-          return []
-        }
-      }
-
       function titleOf(note) {
         const t = (note.title || '').trim()
         if (t) return t
@@ -326,18 +573,270 @@
         return first || '无标题'
       }
 
-      /** 勾选：直接改 localStorage，主应用那边靠 storage 事件自己会更新。 */
-      function toggle(id) {
-        const list = readNotes()
-        const next = list.map((n) => (n.id === id ? { ...n, done: !n.done } : n))
-        localStorage.setItem(NOTES_KEY, JSON.stringify(next))
+      function readCache() {
+        try {
+          const raw = localStorage.getItem(NOTES_KEY)
+          const list = raw ? JSON.parse(raw) : []
+          return Array.isArray(list) ? list : []
+        } catch {
+          return []
+        }
+      }
+
+      function writeCache(list) {
+        try {
+          localStorage.setItem(NOTES_KEY, JSON.stringify(list))
+        } catch {
+          /* 存不下就算了，远端还有一份 */
+        }
+      }
+
+      /* ---------------- 同步配置 ---------------- */
+
+      function readConfig() {
+        try {
+          const raw = localStorage.getItem(SYNC_KEY)
+          if (!raw) return null
+          const c = JSON.parse(raw)
+          if (!c || !c.owner || !c.repo || !c.token) return null
+          return {
+            owner: String(c.owner),
+            repo: String(c.repo),
+            branch: c.branch ? String(c.branch) : 'main',
+            path: c.path ? String(c.path).replace(/^\/+/, '') : 'data.json',
+            token: String(c.token),
+          }
+        } catch {
+          return null
+        }
+      }
+
+      /** 允许直接粘贴仓库网址，取前两段。 */
+      function parseRepo(input) {
+        const text = String(input || '')
+          .trim()
+          .replace(/^https?:\/\/(www\.)?github\.com\//i, '')
+          .replace(/\.git$/i, '')
+          .replace(/\/+$/, '')
+        const parts = text.split('/').filter(Boolean)
+        if (parts.length < 2) return null
+        return { owner: parts[0], repo: parts[1] }
+      }
+
+      /* ---------------- GitHub ---------------- */
+
+      function headers(cfg, json) {
+        const h = {
+          Authorization: 'Bearer ' + cfg.token,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        }
+        if (json) h['Content-Type'] = 'application/json'
+        return h
+      }
+
+      function contentsUrl(cfg) {
+        const path = cfg.path
+          .split('/')
+          .filter(Boolean)
+          .map(encodeURIComponent)
+          .join('/')
+        return (
+          API_ROOT +
+          '/repos/' +
+          encodeURIComponent(cfg.owner) +
+          '/' +
+          encodeURIComponent(cfg.repo) +
+          '/contents/' +
+          path +
+          '?ref=' +
+          encodeURIComponent(cfg.branch)
+        )
+      }
+
+      function describe(status) {
+        if (status === 401) return 'token 无效或已过期'
+        if (status === 403) return '没有权限，或者接口调用太频繁'
+        if (status === 404) return '仓库或文件不存在，检查仓库名和分支'
+        if (status === 409) return '远端刚被改过，稍后会自动重试'
+        if (status === 422) return 'GitHub 拒绝了这次写入'
+        return 'GitHub 返回 ' + status
+      }
+
+      function b64decode(text) {
+        const bin = atob(String(text).replace(/\s/g, ''))
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        return new TextDecoder().decode(bytes)
+      }
+
+      function b64encode(text) {
+        const bytes = new TextEncoder().encode(text)
+        let bin = ''
+        const chunk = 0x8000
+        for (let i = 0; i < bytes.length; i += chunk) {
+          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk))
+        }
+        return btoa(bin)
+      }
+
+      /** 读远端文件。远端还没有这个文件时返回 null，不算错误。 */
+      async function readRemote(cfg) {
+        const res = await fetch(contentsUrl(cfg), {
+          headers: headers(cfg),
+          cache: 'no-store',
+        })
+        if (res.status === 404) return null
+        if (!res.ok) throw new Error(describe(res.status))
+        const json = await res.json()
+        const data = JSON.parse(b64decode(json.content))
+        return { data, sha: json.sha }
+      }
+
+      async function writeRemote(cfg, data, sha) {
+        const body = {
+          message: '工作台同步 ' + new Date().toLocaleString('zh-CN'),
+          content: b64encode(JSON.stringify(data, null, 2)),
+          branch: cfg.branch,
+        }
+        if (sha) body.sha = sha
+        const res = await fetch(contentsUrl(cfg), {
+          method: 'PUT',
+          headers: headers(cfg, true),
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error(describe(res.status))
+        const json = await res.json()
+        return json.content ? json.content.sha : null
+      }
+
+      /* ---------------- 拉取与推送 ---------------- */
+
+      async function pull() {
+        const cfg = readConfig()
+        if (!cfg) {
+          notes = readCache()
+          render()
+          return
+        }
+
+        // 本地还有没推上去的改动时先别拉，否则会被远端盖掉
+        if (writing || pending.size) return
+
+        lastPull = Date.now()
+        try {
+          const file = await readRemote(cfg)
+          if (file) {
+            const list = Array.isArray(file.data.notes) ? file.data.notes : []
+            notes = list
+            writeCache(list)
+            setFoot('')
+          } else {
+            // 远端还没有文件：以本地缓存为起点，等第一次写入时创建
+            notes = readCache()
+            setFoot('远端还没有 data.json')
+          }
+        } catch (err) {
+          notes = readCache()
+          setFoot(err.message, true)
+        }
         render()
       }
+
+      /** 拉取前先做节流，避免窗口反复获得焦点时把接口打爆。 */
+      function pullThrottled() {
+        if (!readConfig()) return
+        if (Date.now() - lastPull < PULL_THROTTLE) return
+        void pull()
+      }
+
+      /**
+       * 把改动推上去。只覆盖改过的那几条，其余以远端为准 ——
+       * 这样网页那边新加的笔记、改过的标签都不会被小窗盖掉。
+       */
+      async function push(changed) {
+        const cfg = readConfig()
+        if (!cfg) return
+
+        for (const note of changed) pending.set(note.id, note)
+
+        // 上一轮还在写：交给它收尾，这里不并发
+        if (writing) return
+
+        writing = true
+        setFoot('同步中…')
+        try {
+          while (pending.size) {
+            const batch = [...pending.values()]
+            pending.clear()
+
+            let done = false
+            for (let attempt = 0; attempt < 2 && !done; attempt++) {
+              const file = await readRemote(cfg)
+              const data = file
+                ? file.data
+                : { version: 1, savedAt: 0, notes: [], tags: [] }
+              const byId = new Map(
+                (Array.isArray(data.notes) ? data.notes : []).map((n) => [n.id, n]),
+              )
+              for (const note of batch) byId.set(note.id, note)
+              data.notes = [...byId.values()]
+              data.savedAt = Date.now()
+              try {
+                await writeRemote(cfg, data, file ? file.sha : null)
+                done = true
+              } catch (err) {
+                // 409 说明刚好有人也在写，重读一次再试
+                if (attempt === 0 && /409|刚被改过/.test(err.message)) continue
+                throw err
+              }
+            }
+            if (!done) throw new Error('远端一直被占用，稍后再试')
+          }
+          setFoot('已同步')
+        } catch (err) {
+          setFoot(err.message, true)
+        } finally {
+          writing = false
+        }
+      }
+
+      /* ---------------- 交互 ---------------- */
+
+      /** 勾选：先改本地、立刻重绘，再推远端。 */
+      function toggle(id) {
+        const now = Date.now()
+        notes = notes.map((n) => (n.id === id ? { ...n, done: !n.done, touchedAt: now } : n))
+        writeCache(notes)
+        render()
+
+        const cfg = readConfig()
+        if (!cfg) return
+        const changed = notes.filter((n) => n.id === id)
+        void push(changed)
+      }
+
+      function setFoot(text, bad) {
+        footEl.textContent = text
+        footEl.classList.toggle('bad', Boolean(bad))
+        footEl.dataset.manual = text ? '1' : ''
+
+        // 「已同步」别一直占着地方，三秒后换回「已完成 N 件」
+        clearTimeout(footTimer)
+        if (text === '已同步') {
+          footTimer = setTimeout(() => {
+            footEl.dataset.manual = ''
+            render()
+          }, 3000)
+        }
+      }
+
+      /* ---------------- 渲染 ---------------- */
 
       function render() {
         const now = new Date()
         const end = todayStart() + 86400000
-        const all = readNotes().filter((n) => !n.deletedAt)
+        const all = notes.filter((n) => !n.deletedAt)
 
         dateEl.textContent =
           now.getFullYear() +
@@ -358,13 +857,18 @@
         ).length
 
         countEl.textContent = todo.length ? todo.length + ' 件' : ''
-        doneEl.textContent = doneToday ? '已完成 ' + doneToday + ' 件' : ''
+
+        if (!footEl.dataset.manual) {
+          footEl.textContent = doneToday ? '已完成 ' + doneToday + ' 件' : ''
+        }
 
         if (todo.length === 0) {
-          listEl.innerHTML =
-            all.length === 0
+          const configured = Boolean(readConfig())
+          listEl.innerHTML = all.length
+            ? '<p class="done-all">今天没有要做的事。<br />可以歇一会儿。</p>'
+            : configured
               ? '<p class="blank">还没有笔记。<br />在工作台里写第一条吧。</p>'
-              : '<p class="done-all">今天没有要做的事。<br />可以歇一会儿。</p>'
+              : '<p class="blank">还没连上数据。<br />先去网页版配置同步，或者在这里点齿轮填一次。</p>'
           return
         }
 
@@ -394,23 +898,111 @@
         listEl.replaceChildren(frag)
       }
 
-      // 主应用在另一个窗口改了笔记，这里跟着刷新
-      window.addEventListener('storage', (event) => {
-        if (event.key === NOTES_KEY) render()
+      /* ---------------- 设置面板 ---------------- */
+
+      function openSheet() {
+        const cfg = readConfig()
+        fRepo.value = cfg ? cfg.owner + '/' + cfg.repo : ''
+        fBranch.value = cfg ? cfg.branch : 'main'
+        fPath.value = cfg ? cfg.path : 'data.json'
+        fToken.value = cfg ? cfg.token : ''
+        setSheetMsg('', '')
+        sheetEl.hidden = false
+        fRepo.focus()
+      }
+
+      function closeSheet() {
+        sheetEl.hidden = true
+      }
+
+      function setSheetMsg(text, kind) {
+        sheetMsg.textContent = text
+        sheetMsg.className = 'msg' + (kind ? ' ' + kind : '')
+      }
+
+      function saveSheet() {
+        const repo = parseRepo(fRepo.value)
+        if (!repo) {
+          setSheetMsg('仓库要写成 owner/repo，或者直接粘贴仓库网址', 'bad')
+          return
+        }
+        const token = fToken.value.trim()
+        if (!token) {
+          setSheetMsg('token 还没填', 'bad')
+          return
+        }
+
+        const cfg = {
+          owner: repo.owner,
+          repo: repo.repo,
+          branch: fBranch.value.trim() || 'main',
+          path: fPath.value.trim().replace(/^\/+/, '') || 'data.json',
+          token,
+        }
+        localStorage.setItem(SYNC_KEY, JSON.stringify(cfg))
+        setSheetMsg('已保存，正在拉取…', 'good')
+        void pull().then(() => {
+          if (!sheetEl.hidden) {
+            setSheetMsg(
+              footEl.classList.contains('bad') ? footEl.textContent : '连上了，共 ' + notes.length + ' 条笔记',
+              footEl.classList.contains('bad') ? 'bad' : 'good',
+            )
+          }
+        })
+      }
+
+      function clearSheet() {
+        localStorage.removeItem(SYNC_KEY)
+        notes = readCache()
+        setSheetMsg('已断开。数据仍然留在本机缓存里。', '')
+        render()
+      }
+
+      /* ---------------- 绑定 ---------------- */
+
+      pinEl.addEventListener('click', async () => {
+        const next = pinEl.getAttribute('aria-pressed') !== 'true'
+        pinEl.setAttribute('aria-pressed', String(next))
+        await window.workbench?.setPinned(next)
       })
 
-      // 跨零点时日期要变，一分钟查一次够了
+      gearEl.addEventListener('click', openSheet)
+      document.getElementById('sheet-close').addEventListener('click', closeSheet)
+      document.getElementById('sheet-save').addEventListener('click', saveSheet)
+      document.getElementById('sheet-clear').addEventListener('click', clearSheet)
+
+      // 主应用在另一个窗口改了笔记，这里跟着刷新
+      window.addEventListener('storage', (event) => {
+        if (event.key === NOTES_KEY) {
+          if (!readConfig()) {
+            notes = readCache()
+            render()
+          }
+        }
+        if (event.key === SYNC_KEY) void pull()
+      })
+
+      window.addEventListener('focus', pullThrottled)
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) pullThrottled()
+      })
+
+      // 跨零点要换日期；顺便定期拉一次远端（多端改动不至于要等重启）
       setInterval(() => {
-        const el = dateEl.dataset.day
-        const today = String(todayStart())
-        if (el !== today) {
-          dateEl.dataset.day = today
+        const day = String(todayStart())
+        if (dateEl.dataset.day !== day) {
+          dateEl.dataset.day = day
           render()
         }
-      }, 60000)
+        pullThrottled()
+      }, PULL_EVERY)
 
       dateEl.dataset.day = String(todayStart())
+
+      // 先拿缓存顶一下，再拉远端
+      notes = readCache()
       render()
+      void pull()
     </script>
   </body>
 </html>
