@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>今天 · 工作台</title>
+    <style>
+      /* 桌面小窗专用：只显示「今天还没做完的事」。
+         和主应用共用同一个源，所以共享 localStorage —— 在那边改这里会跟着变。 */
+      :root {
+        color-scheme: light;
+        --canvas: #f4f3ef;
+        --surface: #ffffff;
+        --ink: #191816;
+        --ink-soft: #565248;
+        --ink-faint: #98938a;
+        --line: #e4e0d6;
+        --accent: #1e3a4c;
+        --danger: #a33a2a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC',
+          'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        overflow: hidden;
+      }
+
+      /* 顶部按钮是拖动区，窗口没有标题栏也能拖 */
+      header {
+        flex: none;
+        padding: 14px 16px 10px;
+        -webkit-app-region: drag;
+      }
+
+      .top {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .count {
+        font-size: 11px;
+        color: var(--ink-faint);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .date {
+        margin-top: 3px;
+        font-size: 10.5px;
+        color: var(--ink-faint);
+      }
+
+      .rule {
+        height: 1px;
+        margin: 9px 0 0;
+        background: var(--line);
+      }
+
+      main {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 4px 0 8px;
+      }
+
+      main::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      main::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(25, 24, 22, 0.16);
+      }
+
+      .item {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        width: 100%;
+        padding: 8px 16px;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        font: inherit;
+        cursor: pointer;
+        transition: background 0.12s ease;
+      }
+
+      .item:hover {
+        background: rgba(25, 24, 22, 0.035);
+      }
+
+      .circle {
+        flex: none;
+        width: 13px;
+        height: 13px;
+        margin-top: 2px;
+        border: 1px solid var(--ink-faint);
+        border-radius: 50%;
+        transition:
+          border-color 0.12s ease,
+          background 0.12s ease;
+      }
+
+      .item:hover .circle {
+        border-color: var(--accent);
+      }
+
+      .title {
+        flex: 1;
+        min-width: 0;
+        font-size: 12.5px;
+        line-height: 17px;
+        color: var(--ink);
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .due {
+        flex: none;
+        margin-top: 1px;
+        padding: 0 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 10px;
+        line-height: 15px;
+        color: var(--ink-faint);
+        white-space: nowrap;
+      }
+
+      .due.over {
+        border-color: rgba(163, 58, 42, 0.4);
+        color: var(--danger);
+      }
+
+      .blank,
+      .done-all {
+        padding: 22px 16px;
+        font-size: 11.5px;
+        line-height: 1.7;
+        color: var(--ink-faint);
+        text-align: center;
+      }
+
+      footer {
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 30px;
+        padding: 0 16px;
+        border-top: 1px solid var(--line);
+        font-size: 10.5px;
+        color: var(--ink-faint);
+        font-variant-numeric: tabular-nums;
+      }
+
+      footer a {
+        color: var(--ink-faint);
+        text-decoration: none;
+      }
+
+      footer a:hover {
+        color: var(--accent);
+        text-decoration: underline;
+      }
+
+      /* ---------- 在 Electron 外壳里的样子 ---------- */
+
+      /*
+       * 不能直接给 body 加 border-radius：body 的背景会被浏览器「传播」到画布上，
+       * 传播时不受圆角约束，四角还是会铺满，看着就是一块方的。
+       * 所以本体透明，另起一层伪元素画圆角底板。
+       */
+      html[data-shell='electron'],
+      html[data-shell='electron'] body {
+        background: transparent;
+      }
+
+      html[data-shell='electron'] body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background: var(--canvas);
+        border-radius: 14px;
+        pointer-events: none;
+      }
+
+      /* 置顶按钮：浏览器里没有意义，只在壳里出现 */
+      .pin {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin-left: auto;
+        padding: 0;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--ink-faint);
+        cursor: pointer;
+        transition: background 0.12s ease, color 0.12s ease;
+        -webkit-app-region: no-drag;
+      }
+
+      html[data-shell='electron'] .pin {
+        display: flex;
+      }
+
+      .pin:hover {
+        background: rgba(25, 24, 22, 0.06);
+        color: var(--ink);
+      }
+
+      .pin[aria-pressed='true'] {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="top">
+        <h1>今天</h1>
+        <span class="count" id="count"></span>
+        <button class="pin" id="pin" type="button" aria-pressed="false" title="总在最前">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 17v5" />
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a2 2 0 0 1 2-2h1a1 1 0 0 0 1-1 1 1 0 0 0-1-1H6a1 1 0 0 0-1 1 1 1 0 0 0 1 1h1a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
+      </div>
+      <div class="date" id="date"></div>
+      <div class="rule"></div>
+    </header>
+
+    <main id="list"></main>
+
+    <footer>
+      <span id="done"></span>
+      <a href="/" target="_blank" rel="noreferrer">打开工作台 ↗</a>
+    </footer>
+
+    <script>
+      // 置顶按钮在浏览器里不显示（CSS 只认 data-shell="electron"），
+      // 这个标记由 Electron 主进程打上；事件绑定在这里做，和标记无关。
+      const pinEl = document.getElementById('pin')
+      if (pinEl) {
+        pinEl.addEventListener('click', async () => {
+          const next = pinEl.getAttribute('aria-pressed') !== 'true'
+          pinEl.setAttribute('aria-pressed', String(next))
+          await window.workbench?.setPinned(next)
+        })
+      }
+
+      const NOTES_KEY = 'workbench.notes.v1'
+      const listEl = document.getElementById('list')
+      const countEl = document.getElementById('count')
+      const dateEl = document.getElementById('date')
+      const doneEl = document.getElementById('done')
+
+      const WEEK = ['日', '一', '二', '三', '四', '五', '六']
+
+      /** 当天的零点，用来判断「今天到期」和「已经逾期」。 */
+      function todayStart() {
+        const d = new Date()
+        d.setHours(0, 0, 0, 0)
+        return d.getTime()
+      }
+
+      function formatDue(ts) {
+        const start = todayStart()
+        const diff = Math.round((ts - start) / 86400000)
+        if (diff === 0) return '今天'
+        if (diff === 1) return '明天'
+        if (diff === -1) return '昨天'
+        if (diff < -1) return '逾期 ' + -diff + ' 天'
+        const d = new Date(ts)
+        return d.getMonth() + 1 + '月' + d.getDate() + '日'
+      }
+
+      function readNotes() {
+        try {
+          const raw = localStorage.getItem(NOTES_KEY)
+          const list = raw ? JSON.parse(raw) : []
+          return Array.isArray(list) ? list : []
+        } catch {
+          return []
+        }
+      }
+
+      function titleOf(note) {
+        const t = (note.title || '').trim()
+        if (t) return t
+        const first = (note.content || '')
+          .split('\n')
+          .map((s) => s.trim())
+          .find(Boolean)
+        return first || '无标题'
+      }
+
+      /** 勾选：直接改 localStorage，主应用那边靠 storage 事件自己会更新。 */
+      function toggle(id) {
+        const list = readNotes()
+        const next = list.map((n) => (n.id === id ? { ...n, done: !n.done } : n))
+        localStorage.setItem(NOTES_KEY, JSON.stringify(next))
+        render()
+      }
+
+      function render() {
+        const now = new Date()
+        const end = todayStart() + 86400000
+        const all = readNotes().filter((n) => !n.deletedAt)
+
+        dateEl.textContent =
+          now.getFullYear() +
+          ' 年 ' +
+          (now.getMonth() + 1) +
+          ' 月 ' +
+          now.getDate() +
+          ' 日 · 星期' +
+          WEEK[now.getDay()]
+
+        // 今天该做的：今天之前到期的、还没做完的
+        const todo = all
+          .filter((n) => typeof n.dueAt === 'number' && !n.done && n.dueAt < end)
+          .sort((a, b) => a.dueAt - b.dueAt)
+
+        const doneToday = all.filter(
+          (n) => n.done && typeof n.dueAt === 'number' && n.dueAt < end,
+        ).length
+
+        countEl.textContent = todo.length ? todo.length + ' 件' : ''
+        doneEl.textContent = doneToday ? '已完成 ' + doneToday + ' 件' : ''
+
+        if (todo.length === 0) {
+          listEl.innerHTML =
+            all.length === 0
+              ? '<p class="blank">还没有笔记。<br />在工作台里写第一条吧。</p>'
+              : '<p class="done-all">今天没有要做的事。<br />可以歇一会儿。</p>'
+          return
+        }
+
+        const frag = document.createDocumentFragment()
+        for (const note of todo) {
+          const overdue = note.dueAt < todayStart()
+
+          const btn = document.createElement('button')
+          btn.type = 'button'
+          btn.className = 'item'
+          btn.addEventListener('click', () => toggle(note.id))
+
+          const circle = document.createElement('span')
+          circle.className = 'circle'
+
+          const title = document.createElement('span')
+          title.className = 'title'
+          title.textContent = titleOf(note)
+
+          const due = document.createElement('span')
+          due.className = overdue ? 'due over' : 'due'
+          due.textContent = formatDue(note.dueAt)
+
+          btn.append(circle, title, due)
+          frag.appendChild(btn)
+        }
+        listEl.replaceChildren(frag)
+      }
+
+      // 主应用在另一个窗口改了笔记，这里跟着刷新
+      window.addEventListener('storage', (event) => {
+        if (event.key === NOTES_KEY) render()
+      })
+
+      // 跨零点时日期要变，一分钟查一次够了
+      setInterval(() => {
+        const el = dateEl.dataset.day
+        const today = String(todayStart())
+        if (el !== today) {
+          dateEl.dataset.day = today
+          render()
+        }
+      }, 60000)
+
+      dateEl.dataset.day = String(todayStart())
+      render()
+    </script>
+  </body>
+</html>
