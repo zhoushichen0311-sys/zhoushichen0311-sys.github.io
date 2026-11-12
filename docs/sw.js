@@ -1,1 +1,30 @@
-if(!self.define){let e,i={};const n=(n,s)=>(n=new URL(n+".js",s).href,i[n]||new Promise(i=>{if("document"in self){const e=document.createElement("script");e.src=n,e.onload=i,document.head.appendChild(e)}else e=n,importScripts(n),i()}).then(()=>{let e=i[n];if(!e)throw new Error(`Module ${n} didn’t register its module`);return e}));self.define=(s,o)=>{const r=e||("document"in self?document.currentScript.src:"")||location.href;if(i[r])return;let c={};const d=e=>n(e,r),l={module:{uri:r},exports:c,require:d};i[r]=Promise.all(s.map(e=>l[e]||d(e))).then(e=>(o(...e),c))}}define(["./workbox-9c191d2f"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"today.html",revision:"1438a6341b79556e977ee1f43dd4d73b"},{url:"phone.html",revision:"0448d58659bdfd4e944f8c2aa97f5460"},{url:"manifest.webmanifest",revision:"f13056b1b6ad274ac440258c0cd6f417"},{url:"index.html",revision:"56a0bece78bb51f9e966430ec7c41eee"},{url:"icon-512.png",revision:"98e32acb015b7ce49e537a1688302fa4"},{url:"icon-192.png",revision:"79e8988aac230d2e6e1d70dd20bd0876"},{url:"icon-180.png",revision:"850f65a7b5f7825a35e0856e27ae0b1c"},{url:"favicon.svg",revision:"f393fed151394f7b15cfdc768c28571b"},{url:"assets/workbox-window.prod.es5-Bd17z0YL.js",revision:null},{url:"assets/index-P6bNgPBV.js",revision:null},{url:"assets/index-B_75wHtP.css",revision:null},{url:"favicon.svg",revision:"f393fed151394f7b15cfdc768c28571b"},{url:"icon-180.png",revision:"850f65a7b5f7825a35e0856e27ae0b1c"},{url:"icon-192.png",revision:"79e8988aac230d2e6e1d70dd20bd0876"},{url:"icon-512.png",revision:"98e32acb015b7ce49e537a1688302fa4"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("/index.html"),{allowlist:[/^\/$/]}))});
+/**
+ * 这个文件只有一个作用：把上一版装在域名根下的 service worker 卸掉。
+ *
+ * 背景：工作台原先部署在 https://zhoushichen0311-sys.github.io/ 根路径，
+ * 它注册的 sw.js 作用域是整个域名，而且配了「任何导航都回退到 index.html」。
+ * 结果是同域名下的 /shichen-zhou-portfolio/ 也被拦成了工作台首页。
+ *
+ * 现在工作台搬到 /workbench/ 下，新的 sw.js 作用域自然缩小到那个子路径，
+ * 但浏览器里装的旧 SW 不会自己消失 —— 它必须被同路径的新文件顶替。
+ *
+ * 所以这个文件会覆盖掉 /sw.js。它没有 fetch 监听器（对请求完全透明），
+ * 装好就立刻注销自己，然后刷新受它控制的标签页。
+ */
+
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    self.registration
+      .unregister()
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((clients) => {
+        for (const client of clients) {
+          if ('navigate' in client) client.navigate(client.url)
+        }
+      }),
+  )
+})

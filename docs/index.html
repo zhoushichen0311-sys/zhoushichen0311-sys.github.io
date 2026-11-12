@@ -1,25 +1,35 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>工作台</title>
-    <meta name="description" content="私人笔记，随手记，多设备同步。" />
-    <meta name="theme-color" content="#f7f5f1" />
-
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icon-180.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="工作台" />
-    <meta name="format-detection" content="telephone=no" />
-    <script type="module" crossorigin src="/assets/index-P6bNgPBV.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-B_75wHtP.css">
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="refresh" content="0; url=/workbench/" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7f5f1;
+        color: #565248;
+        font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+      }
+      a {
+        color: #1e3a4c;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <p>正在前往 <a href="/workbench/">工作台</a>…</p>
+    <script>
+      location.replace('/workbench/')
+    </script>
   </body>
 </html>
